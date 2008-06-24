@@ -1,0 +1,70 @@
+
+============
+HDFS-FUSE
+============
+
+HDFS-FUSE lets you to mount a HDFS in userspace.
+
+===========
+How to use
+===========
+
+on Linux 2.6:
+
+  FUSE:
+    # yum install fuse fuse-libs fuse-devel (Redhat/SuSE)
+    # sudo apt-get install fuse fuse-libs fuse-devel (Debian/Ubuntu)
+
+  Hadoop:
+    $ tar xvzf hadoop-0.17.0.tar.gz
+    $ cd xvzf hadoop-0.17.0/bin
+    (for Pseudo-Distributed mode)
+    $ ./hadoop namenode -format
+    $ ./start-all.sh
+    (Java Runtime Environment is needed to run Hadoop, see Hadoop's reference)
+
+  HDFS-FUSE:
+    $ tar xvzf hdfs-fuse.linux2.6-gcc4.1-x86.tar.gz
+    $ cd hdfs-fuse.linux2.6-gcc4.1-x86/conf	(modify hdfs-fuse.conf for your Hadoop cluster)
+    $ cd ../bin
+
+    (To mount)
+    $ export JAVA_HOME=<your-java-installation-directory>
+    $ export HADOOP_HOME=<your-hadoop-installation-directory>
+    $ export FUSE_HOME=<your-fuse-installation-directory>
+    $ export HDFS-FUSE_HOME=<the-current-directory>
+    $ export HDFS-FUSE_CONF=<the-current-directory>/conf    
+    $ ./hdfs-mount <your-mount-point>
+
+    (To umount)
+    $ fusermount -u <your-mount-point>
+
+
+============
+Notes
+============
+
+The current implementation of HDFS-FUSE only supported a limited set of filesystem feature.
+
+    Supported operation:
+		Open/close files
+        Rename(mv)/delete files
+        list directories
+        get file attributes
+		get filesystem attributes
+
+    In-development: (Coding complete, in testing phrase)
+		Create/write files   
+		Flush
+
+    Future roadmap plan:
+        create/delete directories
+		chmod/chown
+		etc, ...   
+
+======================
+Questions / Bug report
+======================
+
+If you have any question or comment, feel free to send email to <jass.zhao@gmail.com>
+

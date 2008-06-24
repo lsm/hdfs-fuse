@@ -1,0 +1,2 @@
+gcc -Wall -O2 -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26 -I/usr/lib/jvm/java-6-sun/include -I/usr/lib/jvm/java-6-sun/include/linux/ -I /home/karen/Dev/Grid/hdfs/trunk/src/c++/libhdfs/ -I /home/karen/Dev/Grid/hdfs/fuse-2.7.3/include -I ../include/ -fPIC -shared -o libhdfs-fuse.so *.c 
+
