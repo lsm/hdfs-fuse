@@ -1,0 +1,61 @@
+# -*- Mode: Shell; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*- */
+#
+# hdfs-mount
+# Copyright (C) Peng Zhao 2008 <jass.zhao@gmail.com>
+# 
+# hdfs-mount is free software.
+# 
+# You may redistribute it and/or modify it under the terms of the
+# GNU General Public License, as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option)
+# any later version.
+# 
+# This file is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this file.  If not, write to:
+# 	The Free Software Foundation, Inc.,
+# 	51 Franklin Street, Fifth Floor
+# 	Boston, MA  02110-1301, USA.
+#
+
+#!/bin/sh
+
+# JAVA_HOME
+if [ "$JAVA_HOME" = "" ]; then
+  echo "Please set JAVA_HOME to your Java installation directory."
+fi
+# HADOOP_HOME
+if [ "$HADOOP_HOME" = "" ]; then
+  echo "Please set HADOOP_HOME to your Hadoop installation directory."
+fi
+# FUSE_HOME
+if [ "$FUSE_HOME" = "" ]; then
+  echo "Please set FUSE_HOME to your FUSE installation directory."
+fi
+# HDFS_FUSE_HOME
+if [ "$HDFS_FUSE_HOME" = "" ]; then
+  echo "Please set HDFS_FUSE_HOME to your HDFS-FUSE installation directory."
+fi
+# HDFS_FUSE_CONF
+if [ "$HDFS_FUSE_CONF" = "" ]; then
+  echo "Please set HDFS_FUSE_CONF to your HDFS-FUSE configuration file directory."
+fi
+
+JAVA_JVM_DIR=$JAVA_HOME/jre/lib/i386/server			# JVM
+HADOOP_LIBHDFS_DIR=$HADOOP_HOME/libhdfs			# LIBHDFS
+FUSE_LIB_DIR=$FUSE_HOME/lib							# LIBFUSE
+HDFS_FUSE_LIB_DIR=$HDFS_FUSE_HOME/lib				#LIBHDFS-FUSE
+
+
+for f in ls $HADOOP_HOME/lib/*.jar $HADOOP_HOME/*.jar ; do
+  CLASSPATH=$CLASSPATH:$f
+done
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HADOOP_LIBHDFS_DIR:$JAVA_JVM_DIR:$FUSE_LIB_DIR:$HDFS_FUSE_LIB_DIR
+
+./hdfs-fuse $@
+
