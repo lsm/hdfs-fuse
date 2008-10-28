@@ -16,16 +16,16 @@ on Linux 2.6:
     # sudo apt-get install fuse fuse-libs fuse-devel (Debian/Ubuntu)
 
   Hadoop:
-    $ tar xvzf hadoop-0.17.0.tar.gz
-    $ cd xvzf hadoop-0.17.0/bin
+    $ tar xvzf hadoop-0.18.1.tar.gz
+    $ cd xvzf hadoop-0.18.1/bin
     (for Pseudo-Distributed mode)
     $ ./hadoop namenode -format
     $ ./start-all.sh
     (Java Runtime Environment is needed to run Hadoop, see Hadoop's reference)
 
   HDFS-FUSE:
-    $ tar xvzf hdfs-fuse.linux2.6-gcc4.1-x86.tar.gz
-    $ cd hdfs-fuse.linux2.6-gcc4.1-x86/conf	(modify hdfs-fuse.conf for your Hadoop cluster)
+    $ tar xvzf hdfs-fuse.<ARCH>.tar.gz
+    $ cd hdfs-fuse.<ARCH>/conf	(modify hdfs-fuse.conf for your Hadoop cluster)
     $ cd ../bin
 
     (To mount)
@@ -47,20 +47,48 @@ Notes
 The current implementation of HDFS-FUSE only supported a limited set of filesystem feature.
 
     Supported operation:
-		Open/close files
-        Rename(mv)/delete files
-        list directories
-        get file attributes
-		get filesystem attributes
-
-    In-development: (Coding complete, in testing phrase)
-		Create/write files   
-		Flush
+	getattr()
+	mkdir()
+	rmdir()
+	unlink()
+	rename()
+	truncate()
+	open()
+	read()
+	write()
+	statfs()
+	flush()
+	release()
+	readdir()
+	init()
+	destroy()
+	access()
+	create()
+	ftruncate()
+	fgetattr()
+	
+    Fake implementation:
+	chmod()
+	chown()
+	utime()
+	setxattr()
+	getxattr()
+	listxattr()
+	removexattr()
+	
+    Not supported:	
+	readlink()
+	mknod()
+	symlink()
+	link()
+	fsync()
+    opendir()
+	fsyncdir()
+	lock()
+	bmap()
 
     Future roadmap plan:
-        create/delete directories
-		chmod/chown
-		etc, ...   
+        More feature implementation with Hadoop trunk release   
 
 ======================
 Questions / Bug report

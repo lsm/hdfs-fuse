@@ -24,16 +24,82 @@
 
 #include <hdfs-fuse.h>
 
+#define FILE_FLAG_TRUE 1
+#define FILE_FLAG_FALSE 0
+
+char      g_path[MAX_FILENAME_LENGTH];
+int       g_flag;
+hdfsFile  g_file;
+
 extern int fuse_config_init(const char * cfgdir, const char * exe, KeyValue * cfgv, int cfgc);
 extern int fuse_log_init(const char * path, const char * exename, Log_Level level);
 extern void fuse_log(Log_Level level, const char * fname, const char * msg,...);
+int hdfs_unlink(const char *path);
+
+void get_random_path(hdfsFS *hdfs, const char *path)
+{
+	char fname[] = "get_random_path";
+	fuse_log(LOG_DEBUG, fname, "Trace");
+
+	int i = 0;
+	while (!i) {
+		memset(g_path, 0, MAX_FILENAME_LENGTH);
+		sprintf(g_path, "%s.%d", path, abs(rand()));
+		i = hdfsExists(*hdfs, g_path);		
+	}
+}
+
+int hdfs_truncate(const char *path, off_t offset)
+{
+	char fname[] = "hdfs_truncate";
+	hdfsFS hdfs;
+	hdfsFile file;
+	fuse_log(LOG_DEBUG, fname, "Trace");
+
+	if (offset) {
+		fuse_log(LOG_DEBUG, fname, "Truncate to a non-zero length is not supported.");
+		return -ENOSYS;
+	} 
+
+    hdfs = hdfsConnect(config.hostname, config.port);
+    if (hdfs == NULL) {
+        fuse_log(LOG_DEBUG, fname, "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
+        return -EIO;
+    }
+	/*  Remove the existing file & create a new empty one  */
+	hdfs_unlink(path);
+
+	if ((file = hdfsOpenFile(hdfs, path, O_WRONLY, 0, 0, 0)) == NULL) { // use defaut settings
+		fuse_log(LOG_DEBUG, fname, "Error during truncating the file %s", path);
+		return -EIO;
+	}
+    int ret = hdfsCloseFile(hdfs, file);
+    if (ret < 0) {
+        fuse_log(LOG_DEBUG, fname, "Cannot close the file %s", path);
+		return -EIO;
+    }
+	g_flag = FILE_FLAG_TRUE;
+	strcpy(g_path, path);
+
+	return 0;
+}
+
+int hdfs_ftruncate(const char *path, off_t offset, struct fuse_file_info *info)
+{
+	return hdfs_truncate(path, offset);
+}
 
 void *hdfs_init(struct fuse_conn_info *conn) 
 {
 	static char fname[] = "hdfs_init";
-	hdfsFS *hdfs = (hdfsFS*)malloc(sizeof(hdfsFS));
-	
+	hdfsFS *hdfs = (hdfsFS*)malloc(sizeof(hdfsFS));	
+	fuse_log(LOG_DEBUG, fname, "Trace");
+
+	g_flag = FILE_FLAG_FALSE;
+	memset(g_path, 0, MAX_FILENAME_LENGTH);
+	memset(&g_file, 0, sizeof(hdfsFile));
 	memset(hdfs, 0, sizeof(hdfsFS));
+
 	*hdfs = hdfsConnect(config.hostname, config.port);
 	if (*hdfs == NULL) {
 		fuse_log(LOG_DEBUG, fname, "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
@@ -43,7 +109,10 @@ void *hdfs_init(struct fuse_conn_info *conn)
 
 void hdfs_destroy(void *arg) 
 {
+	static char fname[] = "hdfs_destroy";
+
 	hdfsFS *hdfs = (hdfsFS*)arg;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	hdfsDisconnect(*hdfs);
 	free(hdfs);			// should we free or let fuse cares for us ?
@@ -56,6 +125,7 @@ int hdfs_open (const char *path, struct fuse_file_info *info)
 	static char fname[] = "hdfs_open";
 	hdfsFS hdfs;
 	hdfsFile file;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -66,7 +136,7 @@ int hdfs_open (const char *path, struct fuse_file_info *info)
 	if (hdfs == NULL) {
 		fuse_log(LOG_DEBUG, fname, "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
 		return -EIO;
-	} 
+	}
 
 	if ((file = hdfsOpenFile(hdfs, path, info->flags, 0, 0, 0)) == NULL) {	// use defaut settings
 		fuse_log(LOG_DEBUG, fname, "Cannot open the file %s", path);
@@ -82,6 +152,7 @@ int hdfs_read (const char *path, char *buf, size_t size, off_t offset, struct fu
 	static char fname[] = "hdfs_read";
 	hdfsFS hdfs;
 	hdfsFile file;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path || !buf) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -106,6 +177,7 @@ int hdfs_create(const char *path, mode_t mode, struct fuse_file_info *info)
 	static char fname[] = "hdfs_create";
 	hdfsFS hdfs;
 	hdfsFile file;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -133,22 +205,34 @@ int hdfs_write (const char *path, const char *buf, size_t size, off_t offset, st
 	static char fname[] = "hdfs_write";
 	hdfsFS hdfs;
 	hdfsFile file;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path || !buf) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
 		return -EINVAL;
-	}	
+	}
+	
 	hdfs = hdfsConnect(config.hostname, config.port);
 	if (hdfs == NULL) {
 		fuse_log(LOG_DEBUG, "hdfs_write", "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
 		return -EIO;
 	}
-	file = (hdfsFile)info->fh;
-	
-	if (hdfsSeek(hdfs, file, (tOffset)offset) < 0) {
-		fuse_log(LOG_DEBUG, fname, "Invalid offset");
-		return -ESPIPE;
+
+	if (g_flag == FILE_FLAG_TRUE && !strcmp(g_path, path)) {
+		get_random_path(&hdfs, path);
+		if ((g_file = hdfsOpenFile(hdfs, g_path, O_WRONLY, 0, 0, 0)) == NULL) { // use defaut settings
+			memset(g_path, 0, MAX_FILENAME_LENGTH);
+			memset(&g_file, 0, sizeof(hdfsFile));
+			g_flag = FILE_FLAG_FALSE;
+			fuse_log(LOG_DEBUG, fname, "Error during writing to the file %s", path);
+			return -EIO;
+		}
+		file = g_file;
+
+	} else {
+		file = (hdfsFile)info->fh;
 	}
+
 	tSize count =  hdfsWrite(hdfs, file, (void*)buf, (tSize)size);
 	if (count < 0) {
 		fuse_log(LOG_DEBUG, fname, "Failed to write to the file %s", path);
@@ -162,10 +246,32 @@ int hdfs_write (const char *path, const char *buf, size_t size, off_t offset, st
 	return count;
 }
 
+int hdfs_flush(const char *path, struct fuse_file_info *info)
+{
+	char fname[] = "hdfs_flush";
+	hdfsFS hdfs;
+	hdfsFile file;
+
+	hdfs = hdfsConnect(config.hostname, config.port);
+    if (hdfs == NULL) {
+        fuse_log(LOG_DEBUG, "hdfs_write", "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
+        return -EIO;
+    }
+
+	file = (hdfsFile)info->fh;
+	if (hdfsFlush(hdfs, file) < 0) {
+        fuse_log(LOG_DEBUG, fname, "Failed to flush the write buffer to the file %s", path);
+		return -EIO;
+	}
+	
+	return 0;
+}
+
 int hdfs_rename(const char *src, const char *dest)
 {
 	static char fname[] = "hdfs_rename";
 	hdfsFS hdfs;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (src == NULL || dest  == NULL) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -194,6 +300,7 @@ int hdfs_unlink(const char *path)
 {
 	static char fname[] = "hdfs_unlink";
 	hdfsFS hdfs;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path) {
 		fuse_log(LOG_DEBUG, fname, "Missing argument");
@@ -217,6 +324,7 @@ int hdfs_release (const char *path, struct fuse_file_info *info)
 	static char fname[] = "hdfs_release";
 	hdfsFS hdfs;
 	hdfsFile file;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!path) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -234,16 +342,51 @@ int hdfs_release (const char *path, struct fuse_file_info *info)
 		fuse_log(LOG_DEBUG, fname, "Cannot close the file %s", path);
 	}
 	
+	if (g_flag == FILE_FLAG_TRUE && strstr(g_path, path)) {
+		int ret = hdfsCloseFile(hdfs, g_file);
+		if (ret < 0) {
+			fuse_log(LOG_DEBUG, fname, "Cannot close the file %s", path);
+		}
+		hdfs_unlink(path);
+		hdfs_rename(g_path, path);
+
+		memset(g_path, 0, MAX_FILENAME_LENGTH);
+		memset(&g_file, 0, sizeof(hdfsFile));
+		g_flag = FILE_FLAG_FALSE;
+	}
+
 	memset(info, 0, sizeof(struct fuse_file_info));
 	
 	return ret;
 }
+
+int hdfs_access(const char *path, int mask)
+{
+	hdfsFS hdfs;
+
+	hdfs = hdfsConnect(config.hostname, config.port);
+    if (hdfs == NULL) {
+        fuse_log(LOG_DEBUG, "hdfs_open", "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
+        return -EIO;
+    }
+
+	if (hdfsExists(hdfs, path)) {
+		return -EACCES;
+	}
+	if ((mask & W_OK) == W_OK) {
+		return -EACCES;
+	}
+	/*  R_OK, X_OK, F_OK  */
+	return 0;
+}
+
 
 int hdfs_getattr(const char *path, struct stat *st)
 {
 	static char fname[] = "hdfs_getattr";
 	hdfsFS hdfs;
 	hdfsFileInfo *info;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (path == NULL) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments");
@@ -265,7 +408,7 @@ int hdfs_getattr(const char *path, struct stat *st)
 	}
 	memset(st, 0, sizeof(struct stat));
 	st->st_mode 		= (info->mKind == kObjectKindDirectory)?S_IFDIR|0755:S_IFREG|0444;
-	st->st_size		= (info->mKind == kObjectKindDirectory)?4096:info->mSize;
+	st->st_size		    = (info->mKind == kObjectKindDirectory)?4096:info->mSize;
 	st->st_nlink 		= 1;
 	st->st_atime    	= info->mLastMod;  
 	st->st_ctime    	= info->mLastMod;
@@ -279,18 +422,105 @@ int hdfs_getattr(const char *path, struct stat *st)
     	return 0;
 }
 
-/*
+int hdfs_fgetattr(const char *path, struct stat *st, struct fuse_file_info *info)
+{
+	return hdfs_getattr(path, st);
+}
 
-typedef struct  {     
-	tObjectKind mKind;   	// file or directory        
-	char *mName;         	//  the name of the file 
-	tTime mLastMod;   		// the last modification time for the file
-	tOffset mSize;       		// the size of the file in bytes 
-	short mReplication;    	// the count of replicas   
-	tOffset mBlockSize;  	// the block size for the file 
-} hdfsFileInfo;
+#ifdef _XATTR_
+/** Set extended attributes */
+int hdfs_setxattr(const char *path, const char *name, const void *value, size_t size, int flags)
+{
+	/*  just ignore  */
+	return 0;
+}
+/** Get extended attributes */
+int hdfs_getxattr(const char *path, const char *name, char *value, size_t size)
+{
+    /*  just ignore  */
+    return 0;
+}
+/** List extended attributes */
+int hdfs_listxattr(const char *path, char *list, size_t size)
+{
+    /*  just ignore  */
+    return 0;
+}
+/** Remove extended attributes */
+int hdfs_removexattr(const char *path, const char *name)
+{
+    /*  just ignore  */
+    return 0;
+}
+#endif 
 
-*/
+int hdfs_utimens(const char *path, const struct timespec ts[2])
+{
+    /*  just ingore  */
+    return 0;
+}
+
+
+int hdfs_chmod(const char *path, mode_t mode)
+{
+	/*  just ingore  */
+	return 0;
+}
+
+int hdfs_chown(const char *path, uid_t uid, gid_t gid)
+{
+	/*  just ingore  */
+    return 0;
+}
+
+int hdfs_mkdir(const char *path, mode_t mode)
+{
+	char fname[] = "hdfs_mkdir";
+	hdfsFS hdfs;
+
+	hdfs = hdfsConnect(config.hostname, config.port);
+    if (hdfs == NULL) {
+        fuse_log(LOG_DEBUG, fname, "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
+        return -EIO;
+    }
+
+	if (hdfsCreateDirectory(hdfs, path)) {
+		fuse_log(LOG_DEBUG, fname, "Cannot create the directory %d", path);
+		return -EIO;
+	}
+	
+	return 0;
+}
+
+/** Remove a directory */
+int hdfs_rmdir(const char *path)
+{
+	char fname[] = "hdfs_rmdir";
+	hdfsFS hdfs;
+	int nfiles;
+	hdfsFileInfo *info;
+
+	hdfs = hdfsConnect(config.hostname, config.port);
+    if (hdfs == NULL) {
+        fuse_log(LOG_DEBUG, fname, "Cannot connect to HDFS. Hostname: %s, port: %d", config.hostname, config.port);
+        return -EIO;
+    }
+
+	/*  make sure the dir is empty to rmdir  */
+	info = hdfsListDirectory(hdfs, path, &nfiles);
+	hdfsFreeFileInfo(info, nfiles);
+	if (nfiles) {
+		return -ENOTEMPTY;
+	}
+
+	if (hdfsDelete(hdfs, path)) {
+		fuse_log(LOG_DEBUG, fname, "Cannot delete the directory %s", path);
+		return -EIO;
+	}
+	
+	return 0;
+}
+
 
 int hdfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info)
 {  
@@ -301,6 +531,7 @@ int hdfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	hdfsFileInfo *fileinfo;
 	static int notfirsttime = 0;
 	static int off = 0;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 
 	if (!notfirsttime) {
 		char url[MAX_FILENAME_LENGTH];
@@ -373,25 +604,12 @@ int hdfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	return 0;
 }
 
-/*     
-struct statvfs {    
-	unsigned long  f_bsize;    	// file system block size  
-	unsigned long  f_frsize;   	// fragment size  
-	fsblkcnt_t     f_blocks;   		// size of fs in f_frsize units
-	fsblkcnt_t     f_bfree;    		// # free blocks     
-	fsblkcnt_t     f_bavail;   		// # free blocks for non-root  
-	fsfilcnt_t     f_files;    		// # inodes   
-	fsfilcnt_t     f_ffree;    		// # free inodes   
-	fsfilcnt_t     f_favail;   		// # free inodes for non-root  
-	unsigned long  f_fsid;     	// file system id  
-	unsigned long  f_flag;     	// mount flags     
-	unsigned long  f_namemax;  // maximum filename length     
-};  */ 
 static int hdfs_statfs(const char *path, struct statvfs *st)
 { 
 	static char fname[] =  "hdfs_statfs";
 	hdfsFS hdfs;
 	long total, free, used;
+    fuse_log(LOG_DEBUG, fname, "Trace");
 	
 	if (!path || !st) {
 		fuse_log(LOG_DEBUG, fname, "Missing arguments.");
@@ -525,20 +743,39 @@ int main(int argc, char *argv[])
 	ops.read 		= hdfs_read;
 	ops.create 		= hdfs_create;
 	ops.write 		= hdfs_write;
+	ops.truncate    = hdfs_truncate;
+	ops.ftruncate    = hdfs_ftruncate;
 	ops.rename 		= hdfs_rename;
 	ops.unlink 		= hdfs_unlink;
-	ops.release 		= hdfs_release;
-	ops.getattr		= hdfs_getattr;
+	ops.release 	= hdfs_release;
+    ops.getattr		= hdfs_getattr;
+	ops.fgetattr    = hdfs_fgetattr;
+	ops.access      = hdfs_access;
+#ifdef _XATTR_
+	ops.getxattr    = hdfs_getxattr;
+	ops.setxattr    = hdfs_setxattr;
+    ops.listxattr   = hdfs_listxattr;
+    ops.removexattr = hdfs_removexattr;
+#endif
+	ops.chmod       = hdfs_chmod;
+	ops.chown       = hdfs_chown;
+
+	ops.mkdir       = hdfs_mkdir;
+	ops.rmdir       = hdfs_rmdir;
 	ops.readdir		= hdfs_readdir;
-	ops.statfs		= hdfs_statfs;
-	ops.init 			= hdfs_init;
-	ops.destroy 		= hdfs_destroy;
+	
+    ops.statfs		= hdfs_statfs;
+	ops.init 		= hdfs_init;
+	ops.destroy 	= hdfs_destroy;
+	
+	
+	
 
 	hdfs_env_init();
 	hdfs_config_init();
 	//config.logdir = "/tmp";
 	//config.loglv = LOG_DEBUG;
-	//config.hostname = "localhost";
+	//config.hostname = "zhaopeng";
 	//config.port = 9000;
 
 	if (fuse_log_init(config.logdir, "hdfs-fuse", config.loglv) ) exit(127);	
