@@ -28,6 +28,7 @@
 #define _XOPEN_SOURCE 500
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -37,6 +38,10 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <pthread.h>
+
+#ifdef _XATTR_
+#include <sys/attr.h>
+#endif
 
 #include <fuse.h>
 #include <fuse_opt.h>
