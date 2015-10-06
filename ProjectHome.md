@@ -1,0 +1,1 @@
+hdfs-fuse lets you mount the Hadoop HDFS in the userspace.
